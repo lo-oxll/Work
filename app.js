@@ -59,20 +59,15 @@ async function handleRegister(){
   // تأكد عدم وجود جلسة سابقة عالقة (مثلاً حساب موظف مسجّل دخول) قبل تسجيل حساب جديد
   await sb.auth.signOut();
 
-  const { data, error } = await sb.auth.signUp({ email, password });
-  if (error) return alertMsg(error.message, 'error');
-
-  const uid = data.user.id;
-  const { error: profileErr } = await sb.from('profiles').insert({
-    id: uid, role, full_name, phone
+  // نمرّر البيانات كـ metadata مع signUp — الـ trigger بقاعدة البيانات
+  // (handle_new_user) هو من يُنشئ صفوف profiles/employee_profiles/company_profiles
+  // فعليًا، وليس كود المتصفح. هذا يتفادى مشكلة عدم وجود جلسة مصادقة فعلية
+  // مباشرة بعد signUp() عندما يكون "Confirm email" مفعّلًا.
+  const { data, error } = await sb.auth.signUp({
+    email, password,
+    options: { data: { role, full_name, phone } }
   });
-  if (profileErr) return alertMsg(profileErr.message, 'error');
-
-  if (role === 'employee'){
-    await sb.from('employee_profiles').insert({ id: uid, job_title: '', city: '', employment_type: 'دوام_كامل' });
-  } else {
-    await sb.from('company_profiles').insert({ id: uid, company_name: full_name, city: '' });
-  }
+  if (error) return alertMsg(error.message, 'error');
 
   alertMsg('تم إنشاء الحساب. الرجاء فتح بريدك الإلكتروني لتفعيل الحساب قبل الدخول.', 'ok');
   showNav('login');
