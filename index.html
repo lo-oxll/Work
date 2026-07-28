@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>توافق — منصة مطابقة الموظفين والشركات</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&family=Tajawal:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">توافق <span>Tawafuq</span></div>
+  <nav id="mainNav"></nav>
+</header>
+
+<main>
+  <div id="alertBox"></div>
+
+  <!-- ============ تسجيل ============ -->
+  <section id="view-register" class="view">
+    <div class="card">
+      <h2>إنشاء حساب جديد</h2>
+      <div class="grid">
+        <div><label>نوع الحساب</label>
+          <select id="regRole">
+            <option value="employee">موظف يبحث عن عمل</option>
+            <option value="company">شركة تبحث عن موظفين</option>
+          </select>
+        </div>
+        <div><label>الاسم الكامل / اسم الشركة</label><input id="regName" placeholder="مثال: أحمد علي"></div>
+        <div><label>البريد الإلكتروني</label><input id="regEmail" type="email"></div>
+        <div><label>كلمة المرور</label><input id="regPass" type="password"></div>
+        <div><label>رقم الهاتف (واتساب)</label><input id="regPhone" placeholder="9647xxxxxxxxx"></div>
+      </div>
+      <!-- honeypot لصيد البوتات — مخفي عن المستخدم الحقيقي -->
+      <input class="hp" tabindex="-1" autocomplete="off" id="regWebsite" name="website_hp">
+      <button class="btn" onclick="handleRegister()">إنشاء الحساب</button>
+      <p style="color:var(--text-dim); font-size:13px;">لديك حساب؟ <a href="#" style="color:var(--brass)" onclick="showNav('login')">تسجيل الدخول</a></p>
+    </div>
+  </section>
+
+  <!-- ============ دخول ============ -->
+  <section id="view-login" class="view active">
+    <div class="card" style="max-width:420px; margin:60px auto;">
+      <h2>تسجيل الدخول</h2>
+      <label>البريد الإلكتروني</label><input id="loginEmail" type="email">
+      <label>كلمة المرور</label><input id="loginPass" type="password">
+      <button class="btn" style="width:100%" onclick="handleLogin()">دخول</button>
+      <p style="font-size:13px; margin-top:10px;">
+        <a href="#" style="color:var(--brass)" onclick="handleForgotPassword()">نسيت كلمة المرور؟</a>
+        &nbsp;|&nbsp;
+        <a href="#" style="color:var(--brass)" onclick="showNav('register')">إنشاء حساب جديد</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ بروفايل الموظف ============ -->
+  <section id="view-employee" class="view">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2>بروفايلي</h2>
+        <span id="empAvailPill" class="pill available">متاح للعمل</span>
+      </div>
+      <div class="grid">
+        <div><label>المسمى الوظيفي</label><input id="empTitle"></div>
+        <div><label>المدينة</label><input id="empCity"></div>
+        <div><label>سنوات الخبرة</label><input id="empYears" type="number" min="0"></div>
+        <div><label>نوع الدوام</label>
+          <select id="empType">
+            <option value="دوام_كامل">دوام كامل</option>
+            <option value="دوام_جزئي">دوام جزئي</option>
+            <option value="عن_بعد">عن بعد</option>
+            <option value="عقد_مؤقت">عقد مؤقت</option>
+          </select>
+        </div>
+        <div><label>الراتب المتوقع (من)</label><input id="empSalMin" type="number"></div>
+        <div><label>الراتب المتوقع (إلى)</label><input id="empSalMax" type="number"></div>
+        <div><label>الصورة الشخصية</label><input id="empPhoto" type="file" accept="image/*"></div>
+        <div><label>ملف السيرة الذاتية (CV)</label><input id="empCv" type="file" accept=".pdf,.doc,.docx"></div>
+      </div>
+      <button class="btn" onclick="saveEmployeeProfile()">حفظ البروفايل</button>
+      <button class="btn secondary" onclick="toggleAvailability()" style="margin-inline-start:8px;">تبديل الحالة (متاح/غير متاح)</button>
+    </div>
+
+    <div class="card">
+      <h2>العروض الواردة</h2>
+      <div id="employeeOffers"><p class="center">لا توجد عروض بعد</p></div>
+    </div>
+  </section>
+
+  <!-- ============ بروفايل الشركة ============ -->
+  <section id="view-company" class="view">
+    <div class="card">
+      <h2>بيانات الشركة</h2>
+      <div class="grid">
+        <div><label>اسم الشركة</label><input id="compName"></div>
+        <div><label>المدينة</label><input id="compCity"></div>
+        <div><label>مجال العمل</label><input id="compField"></div>
+        <div><label>رقم السجل التجاري</label><input id="compRegistry"></div>
+      </div>
+      <button class="btn" onclick="saveCompanyProfile()">حفظ</button>
+      <span id="compVerifiedPill" style="margin-inline-start:10px;"></span>
+    </div>
+
+    <div class="card">
+      <h2>نشر إعلان وظيفي جديد</h2>
+      <div class="grid">
+        <div><label>المسمى الوظيفي المطلوب</label><input id="jobTitle"></div>
+        <div><label>المدينة</label><input id="jobCity"></div>
+        <div><label>الحد الأدنى للخبرة (سنوات)</label><input id="jobMinExp" type="number" min="0"></div>
+        <div><label>نوع الدوام</label>
+          <select id="jobType">
+            <option value="دوام_كامل">دوام كامل</option>
+            <option value="دوام_جزئي">دوام جزئي</option>
+            <option value="عن_بعد">عن بعد</option>
+            <option value="عقد_مؤقت">عقد مؤقت</option>
+          </select>
+        </div>
+        <div><label>الميزانية (من)</label><input id="jobBudMin" type="number"></div>
+        <div><label>الميزانية (إلى)</label><input id="jobBudMax" type="number"></div>
+      </div>
+      <label>شروط العمل</label><textarea id="jobConditions"></textarea>
+      <button class="btn" onclick="createJob()">نشر الإعلان</button>
+    </div>
+
+    <div class="card">
+      <h2>إعلاناتي</h2>
+      <div id="companyJobs"><p class="center">لا توجد إعلانات بعد</p></div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
