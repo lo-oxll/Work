@@ -56,6 +56,9 @@ async function handleRegister(){
     return alertMsg('الرجاء تعبئة كل الحقول', 'error');
   }
 
+  // تأكد عدم وجود جلسة سابقة عالقة (مثلاً حساب موظف مسجّل دخول) قبل تسجيل حساب جديد
+  await sb.auth.signOut();
+
   const { data, error } = await sb.auth.signUp({ email, password });
   if (error) return alertMsg(error.message, 'error');
 
