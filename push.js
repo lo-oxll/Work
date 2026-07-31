@@ -1,53 +1,50 @@
-const webpush = require('web-push');
-const pool = require('../config/db');
-require('dotenv').config();
+// يحوّل مفتاح VAPID العام من base64 إلى Uint8Array (مطلوب لـ PushManager.subscribe)
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT,
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
+const pushNotifications = {
+  isSupported() {
+    return 'serviceWorker' in navigator && 'PushManager' in window;
+  },
 
-/**
- * يرسل إشعار متصفح لموظف واحد على كل أجهزته المشترِكة.
- * إذا كان الاشتراك منتهي الصلاحية (410/404) يحذفه تلقائيًا من قاعدة البيانات.
- * لا يرمي خطأ للمنادي - إرسال الإشعار عملية "أفضل جهد" ولا يجب أن توقف نشر الإعلان.
- */
-async function notifyEmployee(employeeId, payload) {
-  const subs = await pool.query('SELECT * FROM push_subscriptions WHERE employee_id = $1', [employeeId]);
-
-  const results = await Promise.allSettled(
-    subs.rows.map((sub) =>
-      webpush.sendNotification(
-        {
-          endpoint: sub.endpoint,
-          keys: { p256dh: sub.p256dh, auth: sub.auth },
-        },
-        JSON.stringify(payload)
-      )
-    )
-  );
-
-  results.forEach(async (result, i) => {
-    if (result.status === 'rejected') {
-      const statusCode = result.reason?.statusCode;
-      if (statusCode === 410 || statusCode === 404) {
-        // الاشتراك لم يعد صالحًا (المستخدم ألغى الإذن أو غيّر المتصفح)
-        await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [subs.rows[i].id]).catch(() => {});
-      } else {
-        console.error('فشل إرسال إشعار:', result.reason?.message);
-      }
+  async enable() {
+    if (!this.isSupported()) {
+      throw new Error('متصفحك لا يدعم إشعارات الويب (على iPhone: أضف الموقع للشاشة الرئيسية أولًا)');
     }
-  });
 
-  return results.filter((r) => r.status === 'fulfilled').length;
-}
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      throw new Error('لم تتم الموافقة على إذن الإشعارات');
+    }
 
-/**
- * يرسل إشعارًا لكل موظف في القائمة (المطابقين فقط - وليس كل الموظفين)
- */
-async function notifyMatchedEmployees(employeeIds, payload) {
-  await Promise.allSettled(employeeIds.map((id) => notifyEmployee(id, payload)));
-}
+    const registration = await navigator.serviceWorker.register('./sw.js');
+    await navigator.serviceWorker.ready;
 
-module.exports = { notifyEmployee, notifyMatchedEmployees };
+    const { publicKey } = await api.getVapidPublicKey();
+    if (!publicKey) {
+      throw new Error('لم يتم إعداد مفاتيح الإشعارات في الخادم بعد');
+    }
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+
+    await api.subscribePush(subscription.toJSON());
+    return true;
+  },
+
+  async disable() {
+    if (!this.isSupported()) return;
+    const registration = await navigator.serviceWorker.getRegistration();
+    const subscription = await registration?.pushManager.getSubscription();
+    if (subscription) {
+      await api.unsubscribePush(subscription.endpoint).catch(() => {});
+      await subscription.unsubscribe();
+    }
+  },
+};

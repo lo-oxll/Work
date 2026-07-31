@@ -1,54 +1,55 @@
-# نظام مطابقة الموظفين والشركات
+# واجهة منصة التوظيف — HTML/CSS/JS ساكن (بدون أي أداة بناء)
 
-## التشغيل
+لا تحتاج `npm install` ولا `build`. كل الملفات جاهزة للنشر مباشرة.
+
+## النشر على GitHub Pages
+1. ارفع محتويات هذا المجلد كاملة إلى المستودع (اسحب وأفلت، ثم اضغط **Commit changes**).
+2. Settings → Pages → تأكد أن Source = "Deploy from a branch" والفرع الصحيح مفعّل.
+3. الموقع سيعمل مباشرة على `https://username.github.io/repo-name/` — كل المسارات هنا نسبية (`./css/...`)، فلا مشكلة نشر تحت مسار فرعي (بعكس مشروع React السابق).
+
+## قبل النشر: اضبط عنوان الـ backend
+افتح `js/config.js` وغيّر:
+```js
+window.API_BASE_URL = 'https://your-backend-url.onrender.com/api';
+```
+بدون هذا، كل الطلبات (تسجيل، دخول، نشر إعلان...) ستفشل لأنه لا يوجد سيرفر على GitHub Pages نفسه.
+
+## اختبار محلي
 ```bash
-npm install
-cp .env.example .env   # عدّل القيم (DATABASE_URL, JWT_SECRET, SMTP...)
-psql $DATABASE_URL -f db/schema.sql
-npm run dev
+npx serve .
+# أو أي سيرفر ملفات ثابتة آخر، أو حتى فتح index.html مباشرة (بعض المتصفحات تمنع fetch من file://)
 ```
 
-## تدفق الاستخدام
+## نظام الإشعارات (Web Push)
+- الموظف يضغط "تفعيل الإشعارات" في لوحته → يوافق على الإذن → يُسجَّل اشتراكه في الـ backend.
+- عند نشر شركة لإعلان، الـ backend يحسب المطابقين تلقائيًا ويرسل إشعارًا **فقط لهم**.
+- `sw.js` (Service Worker) يستقبل الإشعار ويعرضه حتى لو المتصفح مغلقًا.
+- **قيد iOS**: إشعارات المتصفح على iPhone تعمل فقط إذا أضاف المستخدم الموقع للشاشة الرئيسية (Share → Add to Home Screen) وفتحه من هناك، وليس من داخل Safari مباشرة. هذا قيد من Apple.
 
-### الموظف
-1. `POST /api/auth/register` بـ `role: "employee"` → يصل إيميل تفعيل.
-2. `GET /api/auth/verify-email?token=...` (يفتحه المستخدم من الإيميل).
-3. `POST /api/auth/login` → يرجّع JWT.
-4. `PUT /api/employee/profile` (multipart/form-data مع photo + cv) لملء البيانات.
-5. `PATCH /api/employee/availability` لتبديل "متاح/غير متاح".
-6. `GET /api/jobs/my-applications` لرؤية عروض الشركات الواصلة له.
-7. `PATCH /api/jobs/applications/:id/respond` بـ `status: accepted|rejected`.
+## البنية
+```
+index.html
+css/styles.css
+sw.js                          # Service Worker للإشعارات
+js/
+  config.js                    # عنوان الـ backend - عدّله هنا فقط
+  auth.js                      # حالة تسجيل الدخول (sessionStorage)
+  api.js                       # كل نداءات fetch للـ backend
+  router.js                    # موجّه hash بسيط (#/route)
+  push.js                      # تفعيل/إلغاء إشعارات المتصفح
+  components/
+    navbar.js
+    matchGauge.js               # ختم التوافق - العنصر البصري المميز
+  pages/
+    home.js, login.js, register.js, forgotPassword.js, resetPassword.js
+    employeeDashboard.js         # بروفايل + الوظائف المطابقة + تقديم + طلباتي
+    companyDashboard.js          # بروفايل + نشر إعلان + عدد المطابقين + المتقدمون
+  main.js                       # يسجّل كل المسارات ويشغّل الموجّه
+```
 
-### الشركة
-1. تسجيل + تفعيل بنفس الطريقة مع `role: "company"`.
-2. `PUT /api/company/profile` لملء بيانات الشركة.
-3. `POST /api/jobs` لإنشاء إعلان وظيفي.
-4. `GET /api/jobs/:id/matches` لرؤية الموظفين المطابقين مع درجة التوافق.
-5. `POST /api/jobs/:id/request` → **زر "طلب موظف"**: يولّد رابط واتساب جاهز لكل موظف مطابق ومتاح، مع تسجيل الطلب في applications. الشركة تضغط الرابط لإرسال الرسالة يدويًا (راجع `src/utils/whatsapp.js` لسبب عدم الإرسال التلقائي المباشر).
-6. `PATCH /api/jobs/:id/status` بـ `status: open|filled|closed` — "طلب موظف ساري" / "تم تشغيل موظف" / "توقف الإعلان".
-
-## محرك المطابقة
-موجود في `src/utils/matching.js`. الأوزان الحالية:
-| الحقل | الوزن |
-|---|---|
-| المسمى الوظيفي | 40 |
-| الموقع الجغرافي | 20 |
-| سنوات الخبرة | 15 |
-| الراتب (تقاطع النطاقين) | 15 |
-| نوع الدوام | 10 |
-
-عدّل `WEIGHTS` في نفس الملف حسب أولوياتكم. العتبة الدنيا للعرض `MIN_SCORE = 40` في `src/routes/jobs.js`.
-
-## الحماية من التسجيلات الوهمية
-- Rate limiting على `/register` (5 محاولات/ساعة لكل IP) و`/login` (10 محاولات/15 دقيقة).
-- تفعيل إلزامي للبريد الإلكتروني قبل تسجيل الدخول.
-- قفل الحساب 30 دقيقة بعد 5 محاولات دخول فاشلة.
-- حقل honeypot (`website_hp`) في نموذج التسجيل لصيد البوتات.
-- تفرّد البريد ورقم الهاتف معًا.
-- `is_verified_business` في بروفايل الشركة — يفعّله الأدمن يدويًا بعد مراجعة السجل التجاري (تحتاجون بناء واجهة أدمن بسيطة لهذا لاحقًا).
-
-## ما لم يُبنَ بعد (يحتاج قرار منكم)
-- رفع الملفات حاليًا محلي (`multer` → `uploads/`) — للإنتاج استبدله بـ S3 أو مكافئ.
-- واجهة الأدمن لتوثيق الشركات (`is_verified_business`) غير مبنية بعد كـ routes.
-- الترقية لـ WhatsApp Business API الرسمي عند الحاجة لإرسال تلقائي حقيقي بدل الروابط اليدوية.
-- Frontend غير مشمول — هذا backend/API فقط.
+## التدفق المطبَّق
+- الشركة تنشر إعلانًا فقط → لا "تطلب" موظفًا يدويًا.
+- عند النشر، الـ backend يشعر المطابقين تلقائيًا (Web Push)، ويرجّع للشركة `notified_count` (عدد فقط، بدون أسماء).
+- الشركة ترى لاحقًا عدد المطابقين المحدَّث لكل إعلان (`match-count`)، لكن لا ترى قائمتهم.
+- الموظف يستلم الإشعار (أو يتصفح تبويب "الوظائف المتاحة لي") ويضغط **تقديم** بنفسه.
+- الشركة ترى فقط من **تقدّم فعليًا** (applicants) وتقرر قبول/رفض.
